@@ -1,4 +1,3 @@
-// Include necessary headers
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <sys/socket.h>
@@ -6,16 +5,13 @@
 #include <unistd.h>
 #include <zlib.h>
 
-#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <map>
-#include <memory>
 #include <sstream>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -39,12 +35,17 @@ struct HttpRequest {
 
 // Function to trim whitespace from both ends of a string
 std::string trim(const std::string &str) {
-  auto start = std::find_if_not(
-      str.begin(), str.end(), [](unsigned char c) { return std::isspace(c); });
-  auto end = std::find_if_not(str.rbegin(), str.rend(), [](unsigned char c) {
-               return std::isspace(c);
-             }).base();
-  return (start < end) ? std::string(start, end) : std::string();
+  auto start = str.begin();
+  while (start != str.end() && std::isspace(*start)) {
+    start++;
+  }
+
+  auto end = str.end();
+  do {
+    end--;
+  } while (std::distance(start, end) > 0 && std::isspace(*end));
+
+  return std::string(start, end + 1);
 }
 
 // Function to parse the HTTP request
@@ -229,16 +230,24 @@ int createServerSocket() {
 }
 
 // Function to accept a new client connection
-int acceptNewClient(int serverFd) {
+void acceptNewClient(int serverFd, std::vector<int> &clientSockets) {
   struct sockaddr_in clientAddr;
   socklen_t clientAddrLen = sizeof(clientAddr);
   int newClient =
       accept(serverFd, (struct sockaddr *)&clientAddr, &clientAddrLen);
   if (newClient < 0) {
-    throw std::runtime_error("Failed to accept new client");
+    std::cerr << "Failed to accept new client" << std::endl;
+    return;
   }
-  std::cout << "Client connected\n";
-  return newClient;
+  std::cout << "Client connected" << std::endl;
+
+  auto it = std::find(clientSockets.begin(), clientSockets.end(), 0);
+  if (it != clientSockets.end()) {
+    *it = newClient;
+  } else {
+    std::cerr << "Max clients reached" << std::endl;
+    close(newClient);
+  }
 }
 
 // Function to handle client request
@@ -264,7 +273,7 @@ int main(int argc, char **argv) {
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
 
-  std::cout << "Server starting...\n";
+  std::cout << "Server starting..." << std::endl;
 
   // Parse command-line arguments
   if (argc == 3 && strcmp(argv[1], "--directory") == 0) {
@@ -296,13 +305,7 @@ int main(int argc, char **argv) {
       }
 
       if (FD_ISSET(serverFd, &clientfds)) {
-        int newClient = acceptNewClient(serverFd);
-        auto it = std::find(clientSockets.begin(), clientSockets.end(), 0);
-        if (it != clientSockets.end()) {
-          *it = newClient;
-        } else {
-          throw std::runtime_error("Max clients reached");
-        }
+        acceptNewClient(serverFd, clientSockets);
       }
 
       for (int &currFd : clientSockets) {
