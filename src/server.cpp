@@ -3,10 +3,22 @@
 #include <cstring>
 #include <iostream>
 #include <netdb.h>
+#include <pthread.h>
 #include <string>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+
+void *handle_connection(void *client_socket) {
+  int client = *(int *)client_socket;
+  free(client_socket);
+
+  // Code to handle the connection, similar to the existing code
+  // ...
+
+  close(client);
+  return NULL;
+}
 
 int main(int argc, char **argv) {
   // Flush after every std::cout / std::cerr
@@ -52,62 +64,36 @@ int main(int argc, char **argv) {
   struct sockaddr_in client_addr;
   int client_addr_len = sizeof(client_addr);
 
-  std::cout << "Waiting for a client to connect...\n";
-  // Task new
+  std::cout << "Waiting for clients to connect...\n";
 
-  int client = accept(server_fd, (struct sockaddr *)&client_addr,
-                      (socklen_t *)&client_addr_len);
-  if (client < 0) {
-    std::cerr << "Failed to accept client connection\n";
-    close(server_fd);
-    return 1;
+  while (true) {
+    int *client_socket = malloc(sizeof(int));
+    if (client_socket == NULL) {
+      std::cerr << "Failed to allocate memory for client socket\n";
+      continue;
+    }
+
+    *client_socket = accept(server_fd, (struct sockaddr *)&client_addr,
+                            (socklen_t *)&client_addr_len);
+    if (*client_socket < 0) {
+      std::cerr << "Failed to accept client connection\n";
+      free(client_socket);
+      continue;
+    }
+
+    pthread_t thread;
+    if (pthread_create(&thread, NULL, handle_connection, client_socket) != 0) {
+      std::cerr << "Failed to create thread\n";
+      close(*client_socket);
+      free(client_socket);
+      continue;
+    }
+
+    if (pthread_detach(thread) != 0) {
+      std::cerr << "Failed to detach thread\n";
+    }
   }
-  // Buffer to read the request
-  char buffer[1024] = {0};
-  int bytes_received = recv(client, buffer, sizeof(buffer), 0);
-  if (bytes_received < 0) {
-    std::cerr << "Failed to receive data\n";
-    close(client);
-    close(server_fd);
-    return 1;
-  }
-  // Extracting the URL from the HTTP request
-  std::string request(buffer);
-  std::string::size_type method_end = request.find(' ');
-  std::string::size_type url_end = request.find(' ', method_end + 1);
-  std::string url = request.substr(method_end + 1, url_end - method_end - 1);
-  // Extracting the User-Agent header
-  std::string::size_type user_agent_pos = request.find("User-Agent:");
-  std::string user_agent;
-  if (user_agent_pos != std::string::npos) {
-    std::string::size_type user_agent_end =
-        request.find("\r\n", user_agent_pos);
-    user_agent = request.substr(user_agent_pos + 12,
-                                user_agent_end - user_agent_pos - 12);
-  }
-  // Check the URL and prepare the response
-  std::string response;
-  if (url == "/") {
-    response = "HTTP/1.1 200 OK\r\n\r\nHello, World!";
-  } else if (url.substr(0, 6) == "/echo/") {
-    std::string echo_str = url.substr(6);
-    response = "HTTP/1.1 200 OK\r\n";
-    response += "Content-Type: text/plain\r\n";
-    response += "Content-Length: " + std::to_string(echo_str.length()) + "\r\n";
-    response += "\r\n" + echo_str;
-  } else if (url == "/user-agent") {
-    response = "HTTP/1.1 200 OK\r\n";
-    response += "Content-Type: text/plain\r\n";
-    response +=
-        "Content-Length: " + std::to_string(user_agent.length()) + "\r\n";
-    response += "\r\n" + user_agent;
-  } else {
-    response = "HTTP/1.1 404 Not Found\r\n\r\n404 Not Found";
-  }
-  // Send the response to the client
-  send(client, response.c_str(), response.length(), 0);
-  std::cout << "Client connected, URL requested: " << url << "\n";
-  close(client);
+
   close(server_fd);
   return 0;
 }
