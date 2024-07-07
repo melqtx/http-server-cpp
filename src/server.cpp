@@ -76,6 +76,15 @@ int main(int argc, char **argv) {
   std::string::size_type method_end = request.find(' ');
   std::string::size_type url_end = request.find(' ', method_end + 1);
   std::string url = request.substr(method_end + 1, url_end - method_end - 1);
+  // Extracting the User-Agent header
+  std::string::size_type user_agent_pos = request.find("User-Agent:");
+  std::string user_agent;
+  if (user_agent_pos != std::string::npos) {
+    std::string::size_type user_agent_end =
+        request.find("\r\n", user_agent_pos);
+    user_agent = request.substr(user_agent_pos + 12,
+                                user_agent_end - user_agent_pos - 12);
+  }
   // Check the URL and prepare the response
   std::string response;
   if (url == "/") {
@@ -86,6 +95,12 @@ int main(int argc, char **argv) {
     response += "Content-Type: text/plain\r\n";
     response += "Content-Length: " + std::to_string(echo_str.length()) + "\r\n";
     response += "\r\n" + echo_str;
+  } else if (url == "/user-agent") {
+    response = "HTTP/1.1 200 OK\r\n";
+    response += "Content-Type: text/plain\r\n";
+    response +=
+        "Content-Length: " + std::to_string(user_agent.length()) + "\r\n";
+    response += "\r\n" + user_agent;
   } else {
     response = "HTTP/1.1 404 Not Found\r\n\r\n404 Not Found";
   }
