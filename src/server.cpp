@@ -17,8 +17,6 @@ int main(int argc, char **argv) {
   // when running tests.
   std::cout << "Logs from your program will appear here!\n";
 
-  // Uncomment this block to pass the first stage
-  //
   int server_fd = socket(AF_INET, SOCK_STREAM, 0);
   if (server_fd < 0) {
     std::cerr << "Failed to create server socket\n";
@@ -58,7 +56,15 @@ int main(int argc, char **argv) {
 
   int client = accept(server_fd, (struct sockaddr *)&client_addr,
                       (socklen_t *)&client_addr_len);
-  std::string message = "HTTP/1.1 200 OK\r\n\r\n";
+  char msg[65536] = {};
+  if (recvfrom(client, msg, sizeof(msg) - 1, 0, (struct sockaddr *)&client_addr,
+               (socklen_t *)&client_addr_len) == SO_ERROR) {
+    std::cerr << "listen failed\n";
+    return 1;
+  }
+  std::string message =
+      std::string("HTTP/1.1 ") +
+      std::string((msg[5] == ' ' ? "200 OK\r\n\r\n" : "404 NOT_FOUNF\r\n\r\n"));
   send(client, message.c_str(), message.length(), 0);
   std::cout << "Client connected\n";
   //
