@@ -21,6 +21,8 @@ struct HttpRequest {
   std::string body;
 };
 
+std::string basePath;
+
 std::string trim(std::string str) {
   auto start = str.begin();
   while (start != str.end() && std::isspace(*start)) {
@@ -57,14 +59,23 @@ HttpRequest parseHttpRequest(std::string request) {
       httpRequest.headers[headerName] = headerValue;
     }
   }
-  // Parse body (if any)
-  std::string body;
-  while (std::getline(stream, line)) {
-    if (!line.empty()) {
-      body += line + "\n";
-    }
+  auto contentLengthHeader = httpRequest.headers.find("Content-Length");
+  if (contentLengthHeader != httpRequest.headers.end()) {
+    int contentLength = std::stoi(contentLengthHeader->second);
+    httpRequest.body.resize(contentLength);
+    stream.read(&httpRequest.body[0], contentLength);
   }
-  httpRequest.body = trim(body);
+  // Parse body (if any)
+  // std::string body;
+  // while (std::getline(stream, line)) {
+  //     if (!line.empty()) {
+  //         body += line + "\n";
+  //     }
+  // }
+  // // httpRequest.body = trim(body);
+  // httpRequest.body = body;
+  // std::cout << "http body len:" << httpRequest.body.length() << "\n";
+  // std::cout << "string body len:" << body.length() << "\n";
   return httpRequest;
 }
 std::string getResponse(std::string &client_req) {
@@ -88,7 +99,7 @@ std::string getResponse(std::string &client_req) {
   } else if (httpRequest.method == "GET" &&
              httpRequest.uri.find("/files") == 0) {
     std::string filePath = httpRequest.uri.substr(7);
-    std::string basePath = "/tmp/data/codecrafters.io/http-server-tester/";
+
     filePath = basePath + filePath;
     std::ifstream file(filePath);
     std::cout << "filepath: " << filePath << "\n";
@@ -111,6 +122,14 @@ std::string getResponse(std::string &client_req) {
     response += "Content-Length: " + std::to_string(filesize);
     response += "\r\n\r\n";
     response += content;
+  } else if (httpRequest.method == "POST" &&
+             httpRequest.uri.find("/files") == 0) {
+    std::string fileName = httpRequest.uri.substr(7);
+    std::string filePath = basePath + fileName;
+    std::ofstream newFile(filePath);
+    newFile << httpRequest.body;
+    newFile.close();
+    response = "HTTP/1.1 201 Created\r\n\r\n";
   } else {
     response = "HTTP/1.1 404 Not Found\r\n\r\n";
   }
@@ -190,6 +209,11 @@ int main(int argc, char **argv) {
   // You can use print statements as follows for debugging, they'll be visible
   // when running tests.
   std::cout << "Logs from your program will appear here!\n";
+
+  if (argc == 3 && strcmp(argv[1], "--directory") == 0) {
+    basePath = argv[2];
+  }
+
   int server_fd = createServerSocket();
   int MAX_CLIENTS = 30;
   std::vector<int> client_sockets(MAX_CLIENTS, 0);
