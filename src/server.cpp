@@ -1,4 +1,4 @@
-// Include necessary headers
+
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <sys/socket.h>
@@ -16,7 +16,6 @@
 #include <string>
 #include <vector>
 
-// Structure to represent an HTTP request
 struct HttpRequest {
   std::string method;
   std::string uri;
@@ -25,7 +24,7 @@ struct HttpRequest {
   std::string body;
 };
 
-// Global variable to store the base path for file operations
+
 std::string basePath;
 
 // Function to trim whitespace from both ends of a string
