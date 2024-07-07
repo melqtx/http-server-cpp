@@ -55,7 +55,6 @@ int main(int argc, char **argv) {
   std::cout << "Waiting for a client to connect...\n";
   // Task new
 
-  // Accept the incoming client connection
   int client = accept(server_fd, (struct sockaddr *)&client_addr,
                       (socklen_t *)&client_addr_len);
   if (client < 0) {
@@ -63,11 +62,8 @@ int main(int argc, char **argv) {
     close(server_fd);
     return 1;
   }
-
-  // Create a buffer to store the received request
+  // Buffer to read the request
   char buffer[1024] = {0};
-
-  // Receive the client's HTTP request
   int bytes_received = recv(client, buffer, sizeof(buffer), 0);
   if (bytes_received < 0) {
     std::cerr << "Failed to receive data\n";
@@ -75,44 +71,28 @@ int main(int argc, char **argv) {
     close(server_fd);
     return 1;
   }
-
-  // Convert the received data to a std::string for easier manipulation
+  // Extracting the URL from the HTTP request
   std::string request(buffer);
-
-  // Find the positions of the method and URL in the request
   std::string::size_type method_end = request.find(' ');
   std::string::size_type url_end = request.find(' ', method_end + 1);
-
-  // Extract the URL from the request
   std::string url = request.substr(method_end + 1, url_end - method_end - 1);
-
-  // Prepare the response based on the requested URL
+  // Check the URL and prepare the response
   std::string response;
   if (url == "/") {
-    // If the URL is "/", send a simple "Hello, World!" response
     response = "HTTP/1.1 200 OK\r\n\r\nHello, World!";
   } else if (url.substr(0, 6) == "/echo/") {
-    // If the URL starts with "/echo/", extract the string after "/echo/"
     std::string echo_str = url.substr(6);
-
-    // Prepare a response with the extracted string
     response = "HTTP/1.1 200 OK\r\n";
     response += "Content-Type: text/plain\r\n";
     response += "Content-Length: " + std::to_string(echo_str.length()) + "\r\n";
     response += "\r\n" + echo_str;
   } else {
-    // For any other URL, send a 404 Not Found response
     response = "HTTP/1.1 404 Not Found\r\n\r\n404 Not Found";
   }
-
-  // Send the prepared response to the client
+  // Send the response to the client
   send(client, response.c_str(), response.length(), 0);
-
-  // Log the requested URL
   std::cout << "Client connected, URL requested: " << url << "\n";
-
-  // Close the client connection and server socket
   close(client);
   close(server_fd);
-
   return 0;
+}
