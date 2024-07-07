@@ -100,13 +100,21 @@ std::string getResponse(std::string &client_req) {
     std::string resBody = httpRequest.uri.substr(6);
     response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n";
     response += "Content-Length: " + std::to_string(resBody.length()) + "\r\n";
+
     if (httpRequest.headers.find("Accept-Encoding") !=
         httpRequest.headers.end()) {
       std::string contentEnc = httpRequest.headers["Accept-Encoding"];
-      if (contentEnc == "gzip") {
-        response += "Content-Encoding: gzip\r\n";
+      std::stringstream contentEncStream(contentEnc);
+      std::string enc;
+
+      while (getline(contentEncStream, enc, ',')) {
+        if (trim(enc) == "gzip") {
+          response += "Content-Encoding: gzip\r\n";
+          break;
+        }
       }
     }
+
     response += "\r\n";
     response += resBody;
   } else if (httpRequest.method == "GET" && httpRequest.uri == "/user-agent") {
