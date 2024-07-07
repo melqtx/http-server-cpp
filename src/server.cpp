@@ -51,26 +51,18 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  int bytes_sent = -1;
-  if (strcmp(req.path, "/") == 0) {
-    const char res[] = "HTTP/1.1 200 OK\r\n\r\n";
-    bytes_sent = send(conn_fd, res, sizeof(res) - 1, 0);
-  } else if (strcmp(req.path, "/user-agent") == 0) {
-    char *s = http_get_header(&req, "user-agent");
-    if (s == NULL) {
-      s = "NULL";
-    }
+  struct sockaddr_in client_addr;
+  int client_addr_len = sizeof(client_addr);
 
-    struct sockaddr_in client_addr;
-    int client_addr_len = sizeof(client_addr);
+  std::cout << "Waiting for a client to connect...\n";
 
-    std::cout << "Waiting for a client to connect...\n";
+  int client = accept(server_fd, (struct sockaddr *)&client_addr,
+                      (socklen_t *)&client_addr_len);
+  std::string message = "HTTP/1.1 200 OK\r\n\r\n";
+  send(client, message.c_str(), message.length(), 0);
+  std::cout << "Client connected\n";
+  //
+  close(server_fd);
 
-    accept(server_fd, (struct sockaddr *)&client_addr,
-           (socklen_t *)&client_addr_len);
-    std::cout << "Client connected\n";
-    //
-    close(server_fd);
-
-    return 0;
-  }
+  return 0;
+}
