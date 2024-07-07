@@ -53,22 +53,45 @@ int main(int argc, char **argv) {
   int client_addr_len = sizeof(client_addr);
 
   std::cout << "Waiting for a client to connect...\n";
-
+  // Task new
   int client = accept(server_fd, (struct sockaddr *)&client_addr,
                       (socklen_t *)&client_addr_len);
-  char msg[65536] = {};
-  if (recvfrom(client, msg, sizeof(msg) - 1, 0, (struct sockaddr *)&client_addr,
-               (socklen_t *)&client_addr_len) == SO_ERROR) {
-    std::cerr << "listen failed\n";
+  if (client < 0) {
+    std::cerr << "Failed to accept client connection\n";
+    close(server_fd);
     return 1;
   }
-  std::string message =
-      std::string("HTTP/1.1 ") +
-      std::string((msg[5] == ' ' ? "200 OK\r\n\r\n" : "404 Not Found\r\n\r\n"));
-  send(client, message.c_str(), message.length(), 0);
-  std::cout << "Client connected\n";
-  //
+  // Buffer to read the request
+  char buffer[1024] = {0};
+  int bytes_received = recv(client, buffer, sizeof(buffer), 0);
+  if (bytes_received < 0) {
+    std::cerr << "Failed to receive data\n";
+    close(client);
+    close(server_fd);
+    return 1;
+  }
+  // Extracting the URL from the HTTP request
+  std::string request(buffer);
+  std::string::size_type method_end = request.find(' ');
+  std::string::size_type url_end = request.find(' ', method_end + 1);
+  std::string url = request.substr(method_end + 1, url_end - method_end - 1);
+  // Check the URL and prepare the response
+  std::string response;
+  if (url == "/") {
+    response = "HTTP/1.1 200 OK\r\n\r\nHello, World!";
+  } else if (url.substr(0, 6) == "/echo/") {
+    std::string echo_str = url.substr(6);
+    response = "HTTP/1.1 200 OK\r\n";
+    response += "Content-Type: text/plain\r\n";
+    response += "Content-Length: " + std::to_string(echo_str.length()) + "\r\n";
+    response += "\r\n" + echo_str;
+  } else {
+    response = "HTTP/1.1 404 Not Found\r\n\r\n404 Not Found";
+  }
+  // Send the response to the client
+  send(client, response.c_str(), response.length(), 0);
+  std::cout << "Client connected, URL requested: " << url << "\n";
+  close(client);
   close(server_fd);
-
   return 0;
 }
