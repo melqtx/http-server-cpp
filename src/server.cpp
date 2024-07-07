@@ -1,6 +1,8 @@
 #include <arpa/inet.h>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <netdb.h>
@@ -83,10 +85,103 @@ std::string getResponse(std::string &client_req) {
     response += "Content-Length: " + std::to_string(resBody.length());
     response += "\r\n\r\n";
     response += resBody;
+  } else if (httpRequest.method == "GET" &&
+             httpRequest.uri.find("/files") == 0) {
+    std::string filePath = httpRequest.uri.substr(7);
+    std::string basePath = "/tmp/data/codecrafters.io/http-server-tester/";
+    filePath = basePath + filePath;
+    std::ifstream file(filePath);
+    std::cout << "filepath: " << filePath << "\n";
+    if (!file.is_open()) {
+      std::cerr << "Failed to open file: " << filePath << std::endl;
+      response = "HTTP/1.1 404 Not Found\r\n\r\n";
+      return response;
+    }
+    std::string content;
+    std::string line;
+    while (std::getline(file, line)) {
+      content += line;
+    }
+    file.close();
+    std::cout << "file content " << content << "\n";
+    std::filesystem::path fsPath = filePath;
+    int filesize = std::filesystem::file_size(filePath);
+    std::cout << "file size " << filesize << "\n";
+    response = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n";
+    response += "Content-Length: " + std::to_string(filesize);
+    response += "\r\n\r\n";
+    response += content;
   } else {
     response = "HTTP/1.1 404 Not Found\r\n\r\n";
   }
   return response;
+}
+int createServerSocket() {
+  int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+  if (server_fd < 0) {
+    std::cerr << "Failed to create server socket\n";
+    exit(EXIT_FAILURE);
+  }
+  // Since the tester restarts your program quite often, setting SO_REUSEADDR
+  // ensures that we don't run into 'Address already in use' errors
+  int reuse = 1;
+  if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) <
+      0) {
+    std::cerr << "setsockopt failed\n";
+    close(server_fd);
+    exit(EXIT_FAILURE);
+  }
+
+  int PORT = 4221;
+  struct sockaddr_in server_addr;
+  server_addr.sin_family = AF_INET;
+  server_addr.sin_addr.s_addr = INADDR_ANY;
+  server_addr.sin_port = htons(PORT);
+  if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) !=
+      0) {
+    std::cerr << "Failed to bind to port 4221\n";
+    return 1;
+    std::cerr << "Failed to bind to port " << PORT << "\n";
+    close(server_fd);
+    exit(EXIT_FAILURE);
+  }
+  int connection_backlog = 5;
+  if (listen(server_fd, connection_backlog) != 0) {
+    std::cerr << "listen failed\n";
+    close(server_fd);
+    exit(EXIT_FAILURE);
+  }
+  return server_fd;
+}
+void acceptNewClient(int server_fd, std::vector<int> &client_sockets) {
+  struct sockaddr_in client_addr;
+  socklen_t client_addr_len = sizeof(client_addr);
+  int new_client =
+      accept(server_fd, (struct sockaddr *)&client_addr, &client_addr_len);
+  if (new_client < 0) {
+    std::cerr << "new client error\n";
+    return;
+  }
+  std::cout << "Client connected\n";
+  for (int &socket : client_sockets) {
+    if (socket == 0) {
+      socket = new_client;
+      break;
+    }
+  }
+}
+void handleClient(int client_fd) {
+  int BUFFER_SIZE = 1024;
+  std::string client_req(BUFFER_SIZE, '\0');
+  ssize_t bytesReceived = recv(client_fd, &client_req[0], BUFFER_SIZE, 0);
+  if (bytesReceived < 0) {
+    std::cerr << "Failed to receive data." << std::endl;
+    close(client_fd);
+    return;
+  }
+  std::string response = getResponse(client_req);
+  send(client_fd, response.c_str(), response.length(), 0);
+  close(client_fd);
 }
 int main(int argc, char **argv) {
   // Flush after every std::cout / std::cerr
@@ -95,49 +190,18 @@ int main(int argc, char **argv) {
   // You can use print statements as follows for debugging, they'll be visible
   // when running tests.
   std::cout << "Logs from your program will appear here!\n";
-  int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-  if (server_fd < 0) {
-    std::cerr << "Failed to create server socket\n";
-    return 1;
-  }
-  // Since the tester restarts your program quite often, setting SO_REUSEADDR
-  // ensures that we don't run into 'Address already in use' errors
-  int reuse = 1;
-  if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) <
-      0) {
-    std::cerr << "setsockopt failed\n";
-    return 1;
-  }
-  struct sockaddr_in server_addr;
-  server_addr.sin_family = AF_INET;
-  server_addr.sin_addr.s_addr = INADDR_ANY;
-  server_addr.sin_port = htons(4221);
-  if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) !=
-      0) {
-    std::cerr << "Failed to bind to port 4221\n";
-    return 1;
-  }
-  int connection_backlog = 5;
-  if (listen(server_fd, connection_backlog) != 0) {
-    std::cerr << "listen failed\n";
-    return 1;
-  }
-  struct sockaddr_in client_addr;
-  int client_addr_len = sizeof(client_addr);
-  std::cout << "Waiting for a client to connect...\n";
+  int server_fd = createServerSocket();
+  int MAX_CLIENTS = 30;
+  std::vector<int> client_sockets(MAX_CLIENTS, 0);
+
   fd_set clientfds;
-  int max_clients = 30;
-  std::vector<int> client_sockets(max_clients);
+
   int max_sd = server_fd;
   while (true) {
     FD_ZERO(&clientfds);
     FD_SET(server_fd, &clientfds);
-    max_sd = server_fd;
-    // add child sockets to set
-    for (int i = 0; i < max_clients; i++) {
-      // socket descriptor
-      int sd = client_sockets[i];
-      // if valid socket descriptor then add to read list
+    int max_sd = server_fd;
+    for (int sd : client_sockets) {
       if (sd > 0)
         FD_SET(sd, &clientfds);
       // highest file descriptor number, need it for the select function
@@ -150,39 +214,13 @@ int main(int argc, char **argv) {
     }
     // new client
     if (FD_ISSET(server_fd, &clientfds)) {
-      int new_client = accept(server_fd, (struct sockaddr *)&client_addr,
-                              (socklen_t *)&client_addr_len);
-      if (new_client == -1) {
-        std::cerr << "new client error\n";
-        exit(EXIT_FAILURE);
-      }
-      std::cout << "Client connected\n";
-      for (int i = 0; i < max_clients; i++) {
-        if (client_sockets[i] == 0) {
-          client_sockets[i] = new_client;
-          break;
-        }
-      }
+      acceptNewClient(server_fd, client_sockets);
     }
     // client operations
-    for (int i = 0; i < max_clients; i++) {
-      int curr_fd = client_sockets[i];
+    for (int &curr_fd : client_sockets) {
       if (FD_ISSET(curr_fd, &clientfds)) {
-        // Receive data from the client
-        std::string client_req(1024, '\0');
-        ssize_t bytesReceived = recv(curr_fd, &client_req[0], 1024, 0);
-        if (bytesReceived == -1) {
-          std::cerr << "Failed to receive data." << std::endl;
-          close(curr_fd);
-          // close(server_fd);
-          return 1;
-        }
-        std::string response = getResponse(client_req);
-
-        std::cout << "client response: " << response << "\n";
-        send(curr_fd, response.c_str(), response.length(), 0);
-        client_sockets[i] = 0;
-        close(curr_fd);
+        handleClient(curr_fd);
+        curr_fd = 0;
       }
     }
   }
@@ -200,6 +238,6 @@ int main(int argc, char **argv) {
   // }
   // std::string response = getResponse(client_req);
   // send(client_fd, response.c_str(), response.length(), 0);
-  // close(server_fd);
+  close(server_fd);
   return 0;
 }
