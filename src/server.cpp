@@ -1,16 +1,17 @@
 #include <arpa/inet.h>
+#include <netdb.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <unistd.h>
+
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <map>
-#include <netdb.h>
 #include <sstream>
 #include <string>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <unistd.h>
 #include <vector>
 
 struct HttpRequest {
@@ -28,18 +29,22 @@ std::string trim(std::string str) {
   while (start != str.end() && std::isspace(*start)) {
     start++;
   }
+
   auto end = str.end();
   do {
     end--;
   } while (std::distance(start, end) > 0 && std::isspace(*end));
+
   std::string res = std::string(start, end + 1);
   return res;
 }
+
 // Function to parse the HTTP request
 HttpRequest parseHttpRequest(std::string request) {
   HttpRequest httpRequest;
   std::istringstream stream(request);
   std::string line;
+
   // Parse request line
   if (std::getline(stream, line)) {
     std::istringstream requestLineStream(line);
@@ -49,6 +54,7 @@ HttpRequest parseHttpRequest(std::string request) {
     httpRequest.uri = trim(httpRequest.uri);
     httpRequest.version = trim(httpRequest.version);
   }
+
   // Parse headers
   while (std::getline(stream, line) && line != "\r") {
     size_t colon = line.find(':');
@@ -59,12 +65,14 @@ HttpRequest parseHttpRequest(std::string request) {
       httpRequest.headers[headerName] = headerValue;
     }
   }
+
   auto contentLengthHeader = httpRequest.headers.find("Content-Length");
   if (contentLengthHeader != httpRequest.headers.end()) {
     int contentLength = std::stoi(contentLengthHeader->second);
     httpRequest.body.resize(contentLength);
     stream.read(&httpRequest.body[0], contentLength);
   }
+
   // Parse body (if any)
   // std::string body;
   // while (std::getline(stream, line)) {
@@ -74,24 +82,22 @@ HttpRequest parseHttpRequest(std::string request) {
   // }
   // // httpRequest.body = trim(body);
   // httpRequest.body = body;
+
   // std::cout << "http body len:" << httpRequest.body.length() << "\n";
   // std::cout << "string body len:" << body.length() << "\n";
+
   return httpRequest;
 }
+
 std::string getResponse(std::string &client_req) {
   HttpRequest httpRequest = parseHttpRequest(client_req);
   std::string response;
+
   if (httpRequest.method == "GET" && httpRequest.uri == "/") {
     response = "HTTP/1.1 200 OK\r\n\r\n";
   } else if (httpRequest.method == "GET" &&
              httpRequest.uri.find("/echo/") == 0) {
     std::string resBody = httpRequest.uri.substr(6);
-    response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n";
-    response += "Content-Length: " + std::to_string(resBody.length());
-    response += "\r\n\r\n";
-    response += resBody;
-  } else if (httpRequest.method == "GET" && httpRequest.uri == "/user-agent") {
-    std::string resBody = httpRequest.headers["User-Agent"];
     response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n";
     response += "Content-Length: " + std::to_string(resBody.length()) + "\r\n";
     if (httpRequest.headers.find("Accept-Encoding") !=
@@ -103,6 +109,13 @@ std::string getResponse(std::string &client_req) {
     }
     response += "\r\n";
     response += resBody;
+  } else if (httpRequest.method == "GET" && httpRequest.uri == "/user-agent") {
+    std::string resBody = httpRequest.headers["User-Agent"];
+
+    response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n";
+    response += "Content-Length: " + std::to_string(resBody.length());
+    response += "\r\n\r\n";
+    response += resBody;
   } else if (httpRequest.method == "GET" &&
              httpRequest.uri.find("/files") == 0) {
     std::string filePath = httpRequest.uri.substr(7);
@@ -110,20 +123,24 @@ std::string getResponse(std::string &client_req) {
     filePath = basePath + filePath;
     std::ifstream file(filePath);
     std::cout << "filepath: " << filePath << "\n";
+
     if (!file.is_open()) {
       std::cerr << "Failed to open file: " << filePath << std::endl;
       response = "HTTP/1.1 404 Not Found\r\n\r\n";
       return response;
     }
+
     std::string content;
     std::string line;
     while (std::getline(file, line)) {
       content += line;
     }
     file.close();
+
     std::cout << "file content " << content << "\n";
     std::filesystem::path fsPath = filePath;
     int filesize = std::filesystem::file_size(filePath);
+
     std::cout << "file size " << filesize << "\n";
     response = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n";
     response += "Content-Length: " + std::to_string(filesize);
@@ -133,23 +150,26 @@ std::string getResponse(std::string &client_req) {
              httpRequest.uri.find("/files") == 0) {
     std::string fileName = httpRequest.uri.substr(7);
     std::string filePath = basePath + fileName;
+
     std::ofstream newFile(filePath);
     newFile << httpRequest.body;
     newFile.close();
+
     response = "HTTP/1.1 201 Created\r\n\r\n";
   } else {
     response = "HTTP/1.1 404 Not Found\r\n\r\n";
   }
+
   return response;
 }
+
 int createServerSocket() {
   int server_fd = socket(AF_INET, SOCK_STREAM, 0);
   if (server_fd < 0) {
     std::cerr << "Failed to create server socket\n";
     exit(EXIT_FAILURE);
   }
-  // Since the tester restarts your program quite often, setting SO_REUSEADDR
-  // ensures that we don't run into 'Address already in use' errors
+
   int reuse = 1;
   if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) <
       0) {
@@ -163,22 +183,24 @@ int createServerSocket() {
   server_addr.sin_family = AF_INET;
   server_addr.sin_addr.s_addr = INADDR_ANY;
   server_addr.sin_port = htons(PORT);
+
   if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) !=
       0) {
-    std::cerr << "Failed to bind to port 4221\n";
-    return 1;
     std::cerr << "Failed to bind to port " << PORT << "\n";
     close(server_fd);
     exit(EXIT_FAILURE);
   }
+
   int connection_backlog = 5;
   if (listen(server_fd, connection_backlog) != 0) {
     std::cerr << "listen failed\n";
     close(server_fd);
     exit(EXIT_FAILURE);
   }
+
   return server_fd;
 }
+
 void acceptNewClient(int server_fd, std::vector<int> &client_sockets) {
   struct sockaddr_in client_addr;
   socklen_t client_addr_len = sizeof(client_addr);
@@ -189,6 +211,7 @@ void acceptNewClient(int server_fd, std::vector<int> &client_sockets) {
     return;
   }
   std::cout << "Client connected\n";
+
   for (int &socket : client_sockets) {
     if (socket == 0) {
       socket = new_client;
@@ -196,6 +219,7 @@ void acceptNewClient(int server_fd, std::vector<int> &client_sockets) {
     }
   }
 }
+
 void handleClient(int client_fd) {
   int BUFFER_SIZE = 1024;
   std::string client_req(BUFFER_SIZE, '\0');
@@ -205,14 +229,17 @@ void handleClient(int client_fd) {
     close(client_fd);
     return;
   }
+
   std::string response = getResponse(client_req);
   send(client_fd, response.c_str(), response.length(), 0);
   close(client_fd);
 }
+
 int main(int argc, char **argv) {
   // Flush after every std::cout / std::cerr
   std::cout << std::unitbuf;
   std::cerr << std::unitbuf;
+
   // You can use print statements as follows for debugging, they'll be visible
   // when running tests.
   std::cout << "Logs from your program will appear here!\n";
@@ -222,32 +249,33 @@ int main(int argc, char **argv) {
   }
 
   int server_fd = createServerSocket();
+
   int MAX_CLIENTS = 30;
   std::vector<int> client_sockets(MAX_CLIENTS, 0);
-
   fd_set clientfds;
 
   int max_sd = server_fd;
   while (true) {
     FD_ZERO(&clientfds);
     FD_SET(server_fd, &clientfds);
+
     int max_sd = server_fd;
     for (int sd : client_sockets) {
       if (sd > 0)
         FD_SET(sd, &clientfds);
-      // highest file descriptor number, need it for the select function
       if (sd > max_sd)
         max_sd = sd;
     }
+
     int activity = select(max_sd + 1, &clientfds, NULL, NULL, NULL);
     if ((activity < 0) && (errno != EINTR)) {
       std::cerr << "select error\n";
     }
-    // new client
+
     if (FD_ISSET(server_fd, &clientfds)) {
       acceptNewClient(server_fd, client_sockets);
     }
-    // client operations
+
     for (int &curr_fd : client_sockets) {
       if (FD_ISSET(curr_fd, &clientfds)) {
         handleClient(curr_fd);
@@ -255,20 +283,7 @@ int main(int argc, char **argv) {
       }
     }
   }
-  // int client_fd = accept(server_fd, (struct sockaddr*)&client_addr,
-  //                        (socklen_t*)&client_addr_len);
-  // std::cout << "Client connected\n";
-  // // Receive data from the client
-  // std::string client_req(1024, '\0');
-  // ssize_t bytesReceived = recv(client_fd, &client_req[0], 1024, 0);
-  // if (bytesReceived == -1) {
-  //     std::cerr << "Failed to receive data." << std::endl;
-  //     close(client_fd);
-  //     close(server_fd);
-  //     return 1;
-  // }
-  // std::string response = getResponse(client_req);
-  // send(client_fd, response.c_str(), response.length(), 0);
+
   close(server_fd);
   return 0;
 }
