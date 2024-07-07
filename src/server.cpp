@@ -64,7 +64,7 @@ int main(int argc, char **argv) {
   }
   std::string message =
       std::string("HTTP/1.1 ") +
-      std::string((msg[5] == ' ' ? "200 OK\r\n\r\n" : "404 NOT_FOUNF\r\n\r\n"));
+      std::string((msg[5] == ' ' ? "200 OK\r\n\r\n" : "404 NOT_FOUND\r\n\r\n"));
   send(client, message.c_str(), message.length(), 0);
   std::cout << "Client connected\n";
   //
