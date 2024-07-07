@@ -9,6 +9,11 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+// Include the necessary definitions and implementations for bstring and
+// http_get_header
+#include "bstring.h"
+#include "http_utils.h"
+
 void *handle_connection(void *client_socket) {
   int client = *(int *)client_socket;
   free(client_socket);
