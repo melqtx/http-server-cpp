@@ -27,7 +27,7 @@ struct HttpRequest {
 
 std::string basePath;
 
-// Function to trim whitespace from both ends of a string
+
 std::string trim(std::string str) {
   auto start = str.begin();
   while (start != str.end() && std::isspace(*start)) {
