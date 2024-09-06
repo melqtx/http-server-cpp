@@ -43,13 +43,13 @@ std::string trim(std::string str) {
   return res;
 }
 
-// Function to parse the HTTP request
+//parse the req
 HttpRequest parseHttpRequest(std::string request) {
   HttpRequest httpRequest;
   std::istringstream stream(request);
   std::string line;
 
-  // Parse request line
+
   if (std::getline(stream, line)) {
     std::istringstream requestLineStream(line);
     requestLineStream >> httpRequest.method >> httpRequest.uri >>
@@ -59,7 +59,6 @@ HttpRequest parseHttpRequest(std::string request) {
     httpRequest.version = trim(httpRequest.version);
   }
 
-  // Parse headers
   while (std::getline(stream, line) && line != "\r") {
     size_t colon = line.find(':');
     if (colon != std::string::npos) {
@@ -69,7 +68,6 @@ HttpRequest parseHttpRequest(std::string request) {
     }
   }
 
-  // Parse body if Content-Length header is present
   auto contentLengthHeader = httpRequest.headers.find("Content-Length");
   if (contentLengthHeader != httpRequest.headers.end()) {
     int contentLength = std::stoi(contentLengthHeader->second);
@@ -109,7 +107,7 @@ std::string compress_string(const std::string &str,
   return outstring;
 }
 
-// Function to generate HTTP response based on the request
+//response
 std::string getResponse(std::string &client_req) {
   HttpRequest httpRequest = parseHttpRequest(client_req);
   std::string response;
